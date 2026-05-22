@@ -1,0 +1,10 @@
+# Session Management Database
+# Format: username|password_hash|session_id|expiration_time|created_time|is_active
+# password_hash: SHA256 hash of password
+# expiration_time: Unix timestamp when session expires
+# created_time: Unix timestamp when session was created
+# is_active: 1 or 0 (1 = active, 0 = revoked)
+
+admin|123456|cd13f89e-7711-4111-9a9a-97f56cc98672|1778835550|0|1
+user|password|c7feee8e-3dc5-49cd-a602-4ef468862f87|1778835550|0|1
+guest|guest|2cc57f89-ea6a-4a7d-b758-a816dce3f5da|1778835550|0|1

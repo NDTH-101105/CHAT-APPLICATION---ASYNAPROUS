@@ -1,0 +1,8 @@
+# Online Status Database
+# Format: username|last_seen|is_online
+# username: user username
+# last_seen: Unix timestamp of last heartbeat
+# is_online: 1 or 0
+
+admin|1778085349|1
+guest|1778082246|1

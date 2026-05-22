@@ -1,0 +1,2 @@
+# This file is no longer used. Messages are now stored in RAM via sampleapp.py
+# Global variable: _messages_storage in sampleapp.py

@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Chat - AsynapRous</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link rel="stylesheet" href="css/chat.css">
+</head>
+<body>
+    <div class="chat-wrapper">
+        <!-- SIDEBAR - ONLINE USERS -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h2>
+                    <span class="online-indicator"></span>
+                    Người Online
+                </h2>
+                <p>0 người đang trực tuyến</p>
+            </div>
+
+            <!-- CURRENT USER PROFILE CARD -->
+            <div class="current-user-card" id="currentUserCard">
+                <div class="current-user-avatar" id="currentUserAvatar">
+                    <span id="currentUserAvatarLetter">?</span>
+                </div>
+                <div class="current-user-details">
+                    <div class="current-user-label">Bạn đang đăng nhập</div>
+                    <div class="current-user-name" id="currentUserDisplayName">Đang tải...</div>
+                </div>
+                <div class="current-user-status-badge">
+                    <span class="online-indicator"></span>
+                    Online
+                </div>
+            </div>
+
+            <div class="users-list">
+                <!-- GENERAL CHAT ROOM -->
+                <div class="user-item active" onclick="selectChat(this, 'general')">
+                    <div class="user-avatar" style="background: linear-gradient(135deg, #00bcd4, #26c6da);">
+                        <i class="fas fa-hashtag"></i>
+                    </div>
+                    <div class="user-info">
+                        <div class="user-name">Hội thoại chung</div>
+                        <div class="user-status">Công khai</div>
+                    </div>
+                    <div class="online-dot"></div>
+                </div>
+
+                <!-- ONLINE USERS LIST - DYNAMIC -->
+                <div id="onlineUsers" class="online-users-list">
+                    <!-- Online users will be populated here by JavaScript -->
+                </div>
+            </div>
+        </div>
+
+        <!-- MAIN CHAT AREA -->
+        <div class="chat-container">
+            <!-- CHAT HEADER -->
+            <div class="chat-header">
+                <div class="chat-header-info">
+                    <div class="user-avatar" style="background: linear-gradient(135deg, #00bcd4, #26c6da); width: 42px; height: 42px;">
+                        <i class="fas fa-hashtag"></i>
+                    </div>
+                    <div>
+                        <div class="chat-title">
+                            Hội thoại chung
+                            <br><span class="room-type" id="roomType">Công khai • 0 thành viên</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="chat-header-actions">
+                    <button class="header-btn" title="Tìm kiếm">
+                        <i class="fas fa-search"></i>
+                    </button>
+                    <button class="header-btn" title="Cài đặt">
+                        <i class="fas fa-ellipsis-v"></i>
+                    </button>
+                    <button class="header-btn logout-btn" onclick="logout()" title="Đăng xuất">
+                        <i class="fas fa-sign-out-alt"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- MESSAGES AREA -->
+            <div class="messages-area" id="messagesArea">
+                
+            </div>
+
+            <!-- INPUT AREA -->
+            <div class="chat-input-area">
+                <div class="input-field">
+                    <input type="text" id="messageInput" placeholder="Gõ tin nhắn của bạn...">
+                </div>
+                <button class="send-btn" onclick="sendMessage()">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- WEBRTC TOAST NOTIFICATIONS -->
+    <div id="rtcToastContainer" class="rtc-toast-container"></div>
+
+    <script src="js/chat.js"></script>
+</body>
+</html>
