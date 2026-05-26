@@ -18,11 +18,18 @@ function escapeHtml(text) {
     return text.replace(/[&<>"']/g, m => map[m]);
 }
 
-// Resolve channel key: "general" or "user1_user2" (sorted)
+// Resolve channel key: "general" or "user1_user2" (sorted) or "group_xxx"
 function resolveChannelKey(chatWith = currentChatWith, username = currentUsername) {
     if (chatWith === null || chatWith === '' || chatWith === 'general') {
         return 'general';
     }
+    
+    // If it's a group ID (starts with 'group_'), return it as-is
+    if (typeof chatWith === 'string' && chatWith.startsWith('group_')) {
+        return chatWith;
+    }
+    
+    // Otherwise, it's a private chat between two users
     const users = [username || '', chatWith].sort();
     return `${users[0]}_${users[1]}`;
 }
@@ -1664,8 +1671,244 @@ function rtcStopMainLoop() {
     }
 }
 
+// ============ GROUP CONVERSATIONS ============
+
+let allGroups = [];
+let userGroups = [];
+
+/**
+ * Load groups from the server
+ */
+async function loadGroups() {
+    try {
+        const response = await fetch('/group/list', {
+            method: 'GET',
+            headers: {
+                'X-Username': currentUsername
+            }
+        });
+        if (!response.ok) {
+            console.error('[Groups] Failed to load groups:', response.status);
+            return;
+        }
+        const data = await response.json();
+        userGroups = data.user_groups || [];
+        allGroups = data.all_groups || [];
+        displayGroups();
+    } catch (err) {
+        console.error('[Groups] Error loading groups:', err);
+    }
+}
+
+/**
+ * Display groups in the sidebar
+ */
+function displayGroups() {
+    const groupsList = document.getElementById('groupsList');
+    if (!groupsList) return;
+    
+    groupsList.innerHTML = '';
+    
+    if (userGroups.length === 0) {
+        groupsList.innerHTML = '<div style="padding: 10px; font-size: 12px; color: var(--text-muted); text-align: center;">Chưa tham gia nhóm nào</div>';
+        return;
+    }
+    
+    userGroups.forEach(group => {
+        const groupDiv = document.createElement('div');
+        groupDiv.className = 'group-item';
+        groupDiv.onclick = () => selectGroupChat(groupDiv, group.id);
+        
+        // Check if group is currently selected
+        if (currentChatWith === group.id) {
+            groupDiv.classList.add('active');
+        }
+        
+        const avatar = String(group.name.charAt(0)).toUpperCase();
+        groupDiv.innerHTML = `
+            <div class="group-avatar">${avatar}</div>
+            <div class="group-info">
+                <div class="group-name">${escapeHtml(group.name)}</div>
+                <div class="group-members-count">${group.member_count} thành viên</div>
+            </div>
+        `;
+        
+        groupsList.appendChild(groupDiv);
+    });
+}
+
+/**
+ * Select a group chat
+ */
+function selectGroupChat(element, groupId) {
+    document.querySelectorAll('.group-item').forEach(item => {
+        item.classList.remove('active');
+    });
+    document.querySelectorAll('.user-item').forEach(item => {
+        item.classList.remove('active');
+    });
+    element.classList.add('active');
+    
+    currentChatWith = groupId;
+    console.log('[Chat] Switched to group:', groupId);
+    
+    // Clear displayed messages cache for this channel
+    delete displayedMessageIds[groupId];
+    lastRenderedChannelKey = null;
+    
+    // Ensure the group channel exists in peer storage
+    const group = userGroups.find(g => g.id === groupId);
+    if (group) {
+        peerEnsureChannel(groupId, 'group', group.members);
+        
+        const chatTitle = document.querySelector('.chat-title');
+        chatTitle.innerHTML = `${escapeHtml(group.name)}<br><span class="room-type">${group.member_count} thành viên</span>`;
+    }
+    
+    loadMessages();
+    renderCurrentChannel(true);
+}
+
+/**
+ * Open create group modal
+ */
+function openCreateGroupModal() {
+    const modal = document.getElementById('createGroupModal');
+    if (!modal) return;
+    
+    modal.style.display = 'flex';
+    
+    // Load online users for member selection
+    loadOnlineUsersForGroupCreation();
+}
+
+/**
+ * Close create group modal
+ */
+function closeCreateGroupModal() {
+    const modal = document.getElementById('createGroupModal');
+    if (!modal) return;
+    
+    modal.style.display = 'none';
+    document.getElementById('groupNameInput').value = '';
+    document.getElementById('membersCheckboxContainer').innerHTML = '';
+}
+
+// Close modal when clicking outside of it
+window.addEventListener('click', function(event) {
+    const modal = document.getElementById('createGroupModal');
+    if (modal && event.target === modal) {
+        closeCreateGroupModal();
+    }
+});
+
+/**
+ * Load online users for group creation
+ */
+function loadOnlineUsersForGroupCreation() {
+    getOnlineUsers().then(data => {
+        const onlineUsers = data.online_users || [];
+        const container = document.getElementById('membersCheckboxContainer');
+        container.innerHTML = '';
+        
+        onlineUsers.forEach(user => {
+            if (user.username !== currentUsername) {
+                const checkboxDiv = document.createElement('div');
+                checkboxDiv.className = 'member-checkbox';
+                
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.value = user.username;
+                checkbox.id = 'member_' + user.username;
+                
+                const label = document.createElement('label');
+                label.htmlFor = 'member_' + user.username;
+                label.textContent = escapeHtml(user.username);
+                label.style.margin = '0';
+                
+                checkboxDiv.appendChild(checkbox);
+                checkboxDiv.appendChild(label);
+                container.appendChild(checkboxDiv);
+            }
+        });
+    });
+}
+
+/**
+ * Create a new group
+ */
+async function createNewGroup() {
+    const groupName = document.getElementById('groupNameInput').value.trim();
+    if (!groupName) {
+        alert('Vui lòng nhập tên nhóm');
+        return;
+    }
+    
+    // Get selected members
+    const checkboxes = document.querySelectorAll('#membersCheckboxContainer input[type="checkbox"]:checked');
+    const members = [];
+    checkboxes.forEach(checkbox => {
+        members.push(checkbox.value);
+    });
+    
+    if (members.length === 0) {
+        alert('Vui lòng chọn ít nhất một thành viên');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/group/create', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Username': currentUsername
+            },
+            body: JSON.stringify({
+                username: currentUsername,
+                group_name: groupName,
+                members: members
+            })
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            alert('Lỗi tạo nhóm: ' + (errorData.error || 'Không xác định'));
+            return;
+        }
+        
+        const data = await response.json();
+        console.log('[Groups] Group created:', data.group);
+        
+        // Close modal
+        closeCreateGroupModal();
+        
+        // Reload groups
+        loadGroups();
+        
+        // Select the newly created group
+        setTimeout(() => {
+            const newGroup = document.querySelector(`.group-item[data-group-id="${data.group.id}"]`);
+            if (newGroup) {
+                newGroup.click();
+            }
+        }, 100);
+        
+        alert('Nhóm đã được tạo thành công!');
+    } catch (err) {
+        console.error('[Groups] Error creating group:', err);
+        alert('Lỗi tạo nhóm: ' + err.message);
+    }
+}
+
+/**
+ * Handle message send for groups
+ * Override the original sendMessage to handle group channel key
+ */
+const originalSendMessage = sendMessage;
+
 window.addEventListener('load', function() {
     loadCurrentUser();
+    loadGroups();
     const messagesArea = document.getElementById('messagesArea');
     messagesArea.scrollTop = messagesArea.scrollHeight;
 });

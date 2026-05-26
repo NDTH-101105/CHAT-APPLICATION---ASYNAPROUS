@@ -1,0 +1,5 @@
+# Group conversations database
+# Format: group_id|group_name|owner|members|created_at|is_active
+# members format: username1,username2,username3
+
+group_98a81c6e_1779774132|Hoàng|admin|admin,user|1779774132|1

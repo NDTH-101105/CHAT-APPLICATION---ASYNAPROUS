@@ -522,6 +522,380 @@ def rtc_poll(headers="guest", body="anonymous"):
     }
 
 
+# ============ GROUP CONVERSATIONS MANAGEMENT ============
+def _load_groups():
+    """Load groups from db/groups.txt file."""
+    groups = {}
+    db_path = os.path.join(os.path.dirname(__file__), '..', 'db', 'groups.txt')
+    
+    if not os.path.exists(db_path):
+        return groups
+    
+    try:
+        with open(db_path, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                
+                parts = line.split('|')
+                if len(parts) >= 6:
+                    group_id = parts[0]
+                    group_name = parts[1]
+                    owner = parts[2]
+                    members_str = parts[3]
+                    created_at = int(parts[4])
+                    is_active = int(parts[5])
+                    
+                    if is_active:
+                        members = [m.strip() for m in members_str.split(',') if m.strip()]
+                        groups[group_id] = {
+                            'id': group_id,
+                            'name': group_name,
+                            'owner': owner,
+                            'members': members,
+                            'created_at': created_at,
+                            'message_count': 0
+                        }
+    except Exception as e:
+        print("[SampleApp] Error loading groups: {}".format(e))
+    
+    return groups
+
+
+def _save_groups(groups):
+    """Save groups to db/groups.txt file."""
+    db_path = os.path.join(os.path.dirname(__file__), '..', 'db', 'groups.txt')
+    
+    try:
+        with open(db_path, 'w') as f:
+            f.write('# Group conversations database\n')
+            f.write('# Format: group_id|group_name|owner|members|created_at|is_active\n')
+            f.write('# members format: username1,username2,username3\n\n')
+            
+            for group_id, group in groups.items():
+                members_str = ','.join(group['members'])
+                is_active = 1
+                line = '{}|{}|{}|{}|{}|{}\n'.format(
+                    group_id, group['name'], group['owner'],
+                    members_str, group['created_at'], is_active
+                )
+                f.write(line)
+    except Exception as e:
+        print("[SampleApp] Error saving groups: {}".format(e))
+
+
+@app.route('/group/create', methods=['POST'])
+def create_group(headers="guest", body="anonymous"):
+    """
+    Create a new group conversation.
+    Expected payload: {'group_name': 'Team A', 'members': ['user1', 'user2']}
+    """
+    username, req = _authenticate_request(headers, body, require_explicit=True)
+    if not username:
+        return {
+            'body': json.dumps({'error': 'Unauthorized'}),
+            'header': {'Content-Type': 'application/json'},
+            'first_line': {'code': 401, 'reason': 'Unauthorized'}
+        }
+
+    payload = _to_payload_dict(body)
+    group_name = str(payload.get('group_name', '')).strip()
+    members = payload.get('members', [])
+    
+    if not group_name:
+        return {
+            'body': json.dumps({'error': 'Group name is required'}),
+            'header': {'Content-Type': 'application/json'},
+            'first_line': {'code': 400, 'reason': 'Bad Request'}
+        }
+    
+    if not isinstance(members, list) or len(members) == 0:
+        return {
+            'body': json.dumps({'error': 'At least one member is required'}),
+            'header': {'Content-Type': 'application/json'},
+            'first_line': {'code': 400, 'reason': 'Bad Request'}
+        }
+    
+    # Ensure creator is in the members list
+    if username not in members:
+        members.append(username)
+    
+    # Remove duplicates
+    members = list(set(members))
+    
+    # Generate group ID
+    group_id = 'group_{}_{}'.format(hashlib.md5(group_name.encode()).hexdigest()[:8], int(time.time()))
+    
+    # Load existing groups
+    groups = _load_groups()
+    
+    # Create new group
+    current_time = int(time.time())
+    groups[group_id] = {
+        'id': group_id,
+        'name': group_name,
+        'owner': username,
+        'members': members,
+        'created_at': current_time,
+        'message_count': 0
+    }
+    
+    # Initialize message storage for this group
+    if group_id not in _messages_storage:
+        _messages_storage[group_id] = []
+    
+    # Save groups to file
+    _save_groups(groups)
+    
+    return {
+        'body': json.dumps({
+            'success': True,
+            'group': groups[group_id]
+        }),
+        'header': {'Content-Type': 'application/json'},
+        'first_line': {'code': 201, 'reason': 'Created'}
+    }
+
+
+@app.route('/group/list', methods=['GET'])
+def list_groups(headers="guest", body="anonymous"):
+    """
+    Get list of all groups and groups the current user is a member of.
+    """
+    username, req = _authenticate_request(headers, body, require_explicit=True)
+    if not username:
+        return {
+            'body': json.dumps({'error': 'Unauthorized'}),
+            'header': {'Content-Type': 'application/json'},
+            'first_line': {'code': 401, 'reason': 'Unauthorized'}
+        }
+
+    groups = _load_groups()
+    
+    # Filter groups where user is a member
+    user_groups = []
+    all_groups = []
+    
+    for group_id, group in groups.items():
+        group_info = {
+            'id': group['id'],
+            'name': group['name'],
+            'owner': group['owner'],
+            'members': group['members'],
+            'member_count': len(group['members']),
+            'created_at': group['created_at']
+        }
+        
+        all_groups.append(group_info)
+        if username in group['members']:
+            user_groups.append(group_info)
+    
+    return {
+        'body': json.dumps({
+            'user_groups': user_groups,
+            'all_groups': all_groups
+        }),
+        'header': {'Content-Type': 'application/json'},
+        'first_line': {'code': 200, 'reason': 'OK'}
+    }
+
+
+@app.route('/group/info', methods=['GET'])
+def get_group_info(headers="guest", body="anonymous"):
+    """
+    Get information about a specific group.
+    Group ID should be in X-Group-Id header.
+    """
+    username, req = _authenticate_request(headers, body, require_explicit=True)
+    if not username:
+        return {
+            'body': json.dumps({'error': 'Unauthorized'}),
+            'header': {'Content-Type': 'application/json'},
+            'first_line': {'code': 401, 'reason': 'Unauthorized'}
+        }
+
+    group_id = ''
+    if headers and isinstance(headers, dict):
+        group_id = headers.get('x-group-id', '').strip()
+    
+    if not group_id:
+        return {
+            'body': json.dumps({'error': 'Group ID is required'}),
+            'header': {'Content-Type': 'application/json'},
+            'first_line': {'code': 400, 'reason': 'Bad Request'}
+        }
+    
+    groups = _load_groups()
+    if group_id not in groups:
+        return {
+            'body': json.dumps({'error': 'Group not found'}),
+            'header': {'Content-Type': 'application/json'},
+            'first_line': {'code': 404, 'reason': 'Not Found'}
+        }
+    
+    group = groups[group_id]
+    
+    # Check if user is a member
+    if username not in group['members']:
+        return {
+            'body': json.dumps({'error': 'You are not a member of this group'}),
+            'header': {'Content-Type': 'application/json'},
+            'first_line': {'code': 403, 'reason': 'Forbidden'}
+        }
+    
+    return {
+        'body': json.dumps({
+            'group': {
+                'id': group['id'],
+                'name': group['name'],
+                'owner': group['owner'],
+                'members': group['members'],
+                'member_count': len(group['members']),
+                'created_at': group['created_at']
+            }
+        }),
+        'header': {'Content-Type': 'application/json'},
+        'first_line': {'code': 200, 'reason': 'OK'}
+    }
+
+
+@app.route('/group/add-member', methods=['POST'])
+def add_group_member(headers="guest", body="anonymous"):
+    """
+    Add a member to a group.
+    Expected payload: {'group_id': 'group_xxx', 'new_member': 'username'}
+    Only group owner can add members.
+    """
+    username, req = _authenticate_request(headers, body, require_explicit=True)
+    if not username:
+        return {
+            'body': json.dumps({'error': 'Unauthorized'}),
+            'header': {'Content-Type': 'application/json'},
+            'first_line': {'code': 401, 'reason': 'Unauthorized'}
+        }
+
+    payload = _to_payload_dict(body)
+    group_id = str(payload.get('group_id', '')).strip()
+    new_member = str(payload.get('new_member', '')).strip()
+    
+    if not group_id or not new_member:
+        return {
+            'body': json.dumps({'error': 'group_id and new_member are required'}),
+            'header': {'Content-Type': 'application/json'},
+            'first_line': {'code': 400, 'reason': 'Bad Request'}
+        }
+    
+    groups = _load_groups()
+    if group_id not in groups:
+        return {
+            'body': json.dumps({'error': 'Group not found'}),
+            'header': {'Content-Type': 'application/json'},
+            'first_line': {'code': 404, 'reason': 'Not Found'}
+        }
+    
+    group = groups[group_id]
+    
+    # Check if user is the owner
+    if username != group['owner']:
+        return {
+            'body': json.dumps({'error': 'Only group owner can add members'}),
+            'header': {'Content-Type': 'application/json'},
+            'first_line': {'code': 403, 'reason': 'Forbidden'}
+        }
+    
+    # Check if member already exists
+    if new_member in group['members']:
+        return {
+            'body': json.dumps({'error': 'Member already in group'}),
+            'header': {'Content-Type': 'application/json'},
+            'first_line': {'code': 400, 'reason': 'Bad Request'}
+        }
+    
+    # Add member
+    group['members'].append(new_member)
+    
+    # Save groups
+    _save_groups(groups)
+    
+    return {
+        'body': json.dumps({
+            'success': True,
+            'group': group
+        }),
+        'header': {'Content-Type': 'application/json'},
+        'first_line': {'code': 200, 'reason': 'OK'}
+    }
+
+
+@app.route('/group/remove-member', methods=['POST'])
+def remove_group_member(headers="guest", body="anonymous"):
+    """
+    Remove a member from a group.
+    Expected payload: {'group_id': 'group_xxx', 'member': 'username'}
+    Only group owner or the member themselves can remove.
+    """
+    username, req = _authenticate_request(headers, body, require_explicit=True)
+    if not username:
+        return {
+            'body': json.dumps({'error': 'Unauthorized'}),
+            'header': {'Content-Type': 'application/json'},
+            'first_line': {'code': 401, 'reason': 'Unauthorized'}
+        }
+
+    payload = _to_payload_dict(body)
+    group_id = str(payload.get('group_id', '')).strip()
+    member = str(payload.get('member', '')).strip()
+    
+    if not group_id or not member:
+        return {
+            'body': json.dumps({'error': 'group_id and member are required'}),
+            'header': {'Content-Type': 'application/json'},
+            'first_line': {'code': 400, 'reason': 'Bad Request'}
+        }
+    
+    groups = _load_groups()
+    if group_id not in groups:
+        return {
+            'body': json.dumps({'error': 'Group not found'}),
+            'header': {'Content-Type': 'application/json'},
+            'first_line': {'code': 404, 'reason': 'Not Found'}
+        }
+    
+    group = groups[group_id]
+    
+    # Check permissions (only owner or the member themselves)
+    if username != group['owner'] and username != member:
+        return {
+            'body': json.dumps({'error': 'Permission denied'}),
+            'header': {'Content-Type': 'application/json'},
+            'first_line': {'code': 403, 'reason': 'Forbidden'}
+        }
+    
+    # Check if member exists in group
+    if member not in group['members']:
+        return {
+            'body': json.dumps({'error': 'Member not in group'}),
+            'header': {'Content-Type': 'application/json'},
+            'first_line': {'code': 400, 'reason': 'Bad Request'}
+        }
+    
+    # Remove member
+    group['members'].remove(member)
+    
+    # Save groups
+    _save_groups(groups)
+    
+    return {
+        'body': json.dumps({
+            'success': True,
+            'group': group
+        }),
+        'header': {'Content-Type': 'application/json'},
+        'first_line': {'code': 200, 'reason': 'OK'}
+    }
+
+
 def create_sampleapp(ip, port):
     # Prepare and launch the RESTful application
     app.prepare_address(ip, port)

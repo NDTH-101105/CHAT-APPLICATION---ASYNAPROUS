@@ -36,6 +36,19 @@
             </div>
 
             <div class="users-list">
+                <!-- GROUPS SECTION -->
+                <div class="groups-section">
+                    <div class="groups-header">
+                        <span>Nhóm hội thoại</span>
+                        <button class="create-group-btn" onclick="openCreateGroupModal()" title="Tạo nhóm mới">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                    </div>
+                    <div id="groupsList" class="groups-list">
+                        <!-- Groups will be populated here by JavaScript -->
+                    </div>
+                </div>
+
                 <!-- GENERAL CHAT ROOM -->
                 <div class="user-item active" onclick="selectChat(this, 'general')">
                     <div class="user-avatar" style="background: linear-gradient(135deg, #00bcd4, #26c6da);">
@@ -102,6 +115,32 @@
 
     <!-- WEBRTC TOAST NOTIFICATIONS -->
     <div id="rtcToastContainer" class="rtc-toast-container"></div>
+
+    <!-- CREATE GROUP MODAL -->
+    <div id="createGroupModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Tạo nhóm hội thoại mới</h3>
+                <span class="close-modal" onclick="closeCreateGroupModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="groupNameInput">Tên nhóm:</label>
+                    <input type="text" id="groupNameInput" placeholder="Nhập tên nhóm..." maxlength="50">
+                </div>
+                <div class="form-group">
+                    <label>Thành viên:</label>
+                    <div id="membersCheckboxContainer" class="members-checkbox-container">
+                        <!-- Members checkboxes will be populated here -->
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-cancel" onclick="closeCreateGroupModal()">Hủy</button>
+                <button class="btn-create" onclick="createNewGroup()">Tạo nhóm</button>
+            </div>
+        </div>
+    </div>
 
     <script src="js/chat.js"></script>
 </body>
